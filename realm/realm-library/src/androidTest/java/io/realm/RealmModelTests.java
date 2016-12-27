@@ -17,6 +17,7 @@
 package io.realm;
 
 import android.content.Context;
+import android.os.Build;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
 
@@ -44,8 +45,11 @@ import io.realm.rule.RunTestInLooperThread;
 import io.realm.rule.TestRealmConfigurationFactory;
 
 import static io.realm.internal.test.ExtraTests.assertArrayEquals;
+import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeThat;
 
 // tests API methods when using a model class implementing RealmModel instead
 // of extending RealmObject.
@@ -101,8 +105,7 @@ public class RealmModelTests {
         for (int i = 1; i < 43; i++) { // using i = 0 as PK will crash subsequent createObject
                                        // since createObject uses default values
             realm.beginTransaction();
-            AllTypesRealmModel allTypesRealmModel = realm.createObject(AllTypesRealmModel.class);
-            allTypesRealmModel.columnLong = i;
+            realm.createObject(AllTypesRealmModel.class, i);
             realm.commitTransaction();
         }
 
@@ -154,17 +157,21 @@ public class RealmModelTests {
         assertEquals(1, realm.where(AllTypesRealmModel.class).count());
 
         AllTypesRealmModel obj = realm.where(AllTypesRealmModel.class).findFirst();
+        assertNotNull(obj);
         assertEquals("Foo", obj.columnString);
     }
 
     @Test
     public void createOrUpdateAllFromJson() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.beginTransaction();
         realm.createOrUpdateAllFromJson(AllTypesRealmModel.class, TestHelper.loadJsonFromAssets(context, "list_alltypes_primarykey.json"));
         realm.commitTransaction();
 
         assertEquals(1, realm.where(AllTypesRealmModel.class).count());
         AllTypesRealmModel obj = realm.where(AllTypesRealmModel.class).findFirst();
+        assertNotNull(obj);
         assertEquals("Bar", obj.columnString);
         assertEquals(2.23F, obj.columnFloat, 0.000000001);
         assertEquals(2.234D, obj.columnDouble, 0.000000001);
@@ -207,12 +214,13 @@ public class RealmModelTests {
         populateTestRealm(realm, TEST_DATA_SIZE);
 
         AllTypesRealmModel typedObj = realm.where(AllTypesRealmModel.class).findFirst();
+        assertNotNull(typedObj);
         DynamicRealmObject dObj = new DynamicRealmObject(typedObj);
 
         realm.beginTransaction();
-        dObj.setLong(AllTypesRealmModel.FIELD_LONG, 42L);
-        assertEquals(42, dObj.getLong(AllTypesRealmModel.FIELD_LONG));
-        assertEquals(42, typedObj.columnLong);
+        dObj.setByte(AllTypesRealmModel.FIELD_BYTE, (byte) 42);
+        assertEquals(42, dObj.getLong(AllTypesRealmModel.FIELD_BYTE));
+        assertEquals(42, typedObj.columnByte);
 
         dObj.setBlob(AllTypesRealmModel.FIELD_BINARY, new byte[]{1, 2, 3});
         Assert.assertArrayEquals(new byte[]{1, 2, 3}, dObj.getBlob(AllTypesRealmModel.FIELD_BINARY));

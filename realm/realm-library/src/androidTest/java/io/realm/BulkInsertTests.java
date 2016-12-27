@@ -17,7 +17,6 @@
 package io.realm;
 
 import android.support.test.runner.AndroidJUnit4;
-import android.util.Log;
 
 import org.junit.After;
 import org.junit.Before;
@@ -44,6 +43,7 @@ import io.realm.entities.DogPrimaryKey;
 import io.realm.entities.HumanModule;
 import io.realm.entities.NoPrimaryKeyWithPrimaryKeyObjectRelation;
 import io.realm.entities.NullTypes;
+import io.realm.entities.Owner;
 import io.realm.entities.PrimaryKeyAsBoxedShort;
 import io.realm.entities.PrimaryKeyAsLong;
 import io.realm.entities.PrimaryKeyAsString;
@@ -88,6 +88,7 @@ public class BulkInsertTests {
     public void insert() {
         AllJavaTypes obj = new AllJavaTypes();
         obj.setFieldIgnored("cookie");
+        obj.setFieldId(42);
         obj.setFieldLong(42);
         obj.setFieldString("obj1");
 
@@ -98,6 +99,7 @@ public class BulkInsertTests {
 
         AllJavaTypes allTypes = new AllJavaTypes();
         allTypes.setFieldString("String");
+        allTypes.setFieldId(1L);
         allTypes.setFieldLong(1L);
         allTypes.setFieldFloat(1F);
         allTypes.setFieldDouble(1D);
@@ -289,6 +291,46 @@ public class BulkInsertTests {
         assertEquals("One", realmObjects.get(0).getName());
         assertEquals("updated", realmObjects.get(0).getObject().getName());
         assertEquals(2, realm.where(CyclicTypePrimaryKey.class).count());
+    }
+
+    @Test
+    public void insertOrUpdate_cyclicDependenciesFromOtherRealm() {
+        RealmConfiguration config1 = configFactory.createConfiguration("realm1");
+        RealmConfiguration config2 = configFactory.createConfiguration("realm2");
+
+        Realm realm1 = Realm.getInstance(config1);
+        Realm realm2 = Realm.getInstance(config2);
+
+        realm1.beginTransaction();
+        Owner owner = realm1.createObject(Owner.class);
+        owner.setName("Kiba");
+        Dog dog = realm1.createObject(Dog.class);
+        dog.setName("Akamaru");
+        owner.getDogs().add(dog);
+        dog.setOwner(owner);
+        realm1.commitTransaction();
+
+        //Copy object with relations from realm1 to realm2
+        realm2.beginTransaction();
+        realm2.insertOrUpdate(owner);
+        realm2.commitTransaction();
+
+        assertEquals(1, realm1.where(Owner.class).count());
+        assertEquals(1, realm1.where(Owner.class).findFirst().getDogs().size());
+        assertEquals(1, realm1.where(Dog.class).count());
+
+        assertEquals(realm1.where(Owner.class).count(), realm2.where(Owner.class).count());
+        assertEquals(realm1.where(Dog.class).count(), realm2.where(Dog.class).count());
+
+        assertEquals(1, realm2.where(Owner.class).findFirst().getDogs().size());
+
+        assertEquals(realm1.where(Owner.class).findFirst().getName(), realm2.where(Owner.class).findFirst().getName());
+
+        assertEquals(realm1.where(Owner.class).findFirst().getDogs().first().getName()
+                , realm2.where(Owner.class).findFirst().getDogs().first().getName());
+
+        realm1.close();
+        realm2.close();
     }
 
     @Test
@@ -765,6 +807,7 @@ public class BulkInsertTests {
     @Test
     public void insertOrUpdate_managedObject() {
         AllJavaTypes obj = new AllJavaTypes();
+        obj.setFieldId(42);
         obj.setFieldIgnored("cookie");
         obj.setFieldLong(42);
         obj.setFieldString("obj1");
@@ -808,11 +851,11 @@ public class BulkInsertTests {
         realm.insertOrUpdate(unmanagedObject);
         realm.commitTransaction();
 
-        AllJavaTypes first = realm.where(AllJavaTypes.class).equalTo(AllJavaTypes.FIELD_LONG, 8).findFirst();
+        AllJavaTypes first = realm.where(AllJavaTypes.class).equalTo(AllJavaTypes.FIELD_ID, 8).findFirst();
         assertNotNull(first);
-        assertEquals(8, first.getFieldLong(), 0);
+        assertEquals(8, first.getFieldId(), 0);
         assertNotNull(first.getFieldObject());
-        assertEquals(42, first.getFieldObject().getFieldLong());
+        assertEquals(42, first.getFieldObject().getFieldId());
         assertEquals(2, realm.where(AllJavaTypes.class).count());
     }
 
@@ -833,8 +876,8 @@ public class BulkInsertTests {
     @Test
     public void insertOrUpdate_collectionOfManagedObjects() {
         realm.beginTransaction();
-        AllTypesPrimaryKey allTypes = realm.createObject(AllTypesPrimaryKey.class);
-        allTypes.getColumnRealmList().add(realm.createObject(DogPrimaryKey.class));
+        AllTypesPrimaryKey allTypes = realm.createObject(AllTypesPrimaryKey.class, 0);
+        allTypes.getColumnRealmList().add(realm.createObject(DogPrimaryKey.class, 0));
         realm.commitTransaction();
         assertEquals(1, allTypes.getColumnRealmList().size());
 
@@ -856,8 +899,8 @@ public class BulkInsertTests {
     @Test
     public void insertOrUpdate_shouldNotClearRealmList() {
         realm.beginTransaction();
-        AllTypesPrimaryKey allTypes = realm.createObject(AllTypesPrimaryKey.class);
-        allTypes.getColumnRealmList().add(realm.createObject(DogPrimaryKey.class));
+        AllTypesPrimaryKey allTypes = realm.createObject(AllTypesPrimaryKey.class, 0);
+        allTypes.getColumnRealmList().add(realm.createObject(DogPrimaryKey.class, 0));
         realm.commitTransaction();
         assertEquals(1, allTypes.getColumnRealmList().size());
 

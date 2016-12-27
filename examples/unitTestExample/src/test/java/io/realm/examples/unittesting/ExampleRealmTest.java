@@ -24,6 +24,7 @@ import org.mockito.Mockito;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.core.classloader.annotations.SuppressStaticInitializationFor;
 import org.powermock.modules.junit4.rule.PowerMockRule;
 import org.robolectric.RobolectricGradleTestRunner;
 import org.robolectric.annotation.Config;
@@ -32,6 +33,7 @@ import io.realm.Realm;
 import io.realm.examples.unittesting.model.Dog;
 import io.realm.examples.unittesting.repository.DogRepository;
 import io.realm.examples.unittesting.repository.DogRepositoryImpl;
+import io.realm.log.RealmLog;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
@@ -45,7 +47,8 @@ import static org.powermock.api.mockito.PowerMockito.when;
 @RunWith(RobolectricGradleTestRunner.class)
 @Config(constants = BuildConfig.class, sdk = 19)
 @PowerMockIgnore({"org.mockito.*", "org.robolectric.*", "android.*"})
-@PrepareForTest({Realm.class})
+@SuppressStaticInitializationFor("io.realm.internal.Util")
+@PrepareForTest({Realm.class, RealmLog.class})
 public class ExampleRealmTest {
     // Robolectric, Using Power Mock https://github.com/robolectric/robolectric/wiki/Using-PowerMock
 
@@ -55,6 +58,7 @@ public class ExampleRealmTest {
 
     @Before
     public void setup() {
+        mockStatic(RealmLog.class);
         mockStatic(Realm.class);
 
         Realm mockRealm = PowerMockito.mock(Realm.class);
@@ -103,7 +107,7 @@ public class ExampleRealmTest {
         dogRepo.createDog("Spot");
 
         // Attempting to verify that a method was called (executeTransaction) on a partial
-        // mock will return unexpected resultes due to the partial mock. For example,
+        // mock will return unexpected results due to the partial mock. For example,
         // verifying that `executeTransaction` was called only once will fail as Powermock
         // actually calls the method 3 times for some reason. I cannot determine why at this
         // point.

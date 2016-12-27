@@ -17,9 +17,13 @@
 package io.realm;
 
 import android.content.Context;
+import android.os.Build;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
+import android.text.TextUtils;
 import android.util.Base64;
+
+import com.google.gson.internal.bind.util.ISO8601Utils;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -42,19 +46,23 @@ import java.util.TimeZone;
 import io.realm.entities.AllTypes;
 import io.realm.entities.AllTypesPrimaryKey;
 import io.realm.entities.AnnotationTypes;
+import io.realm.entities.DefaultValueOfField;
 import io.realm.entities.Dog;
 import io.realm.entities.NoPrimaryKeyNullTypes;
 import io.realm.entities.NullTypes;
 import io.realm.entities.OwnerPrimaryKey;
+import io.realm.entities.RandomPrimaryKey;
 import io.realm.exceptions.RealmException;
 import io.realm.rule.TestRealmConfigurationFactory;
 
 import static io.realm.internal.test.ExtraTests.assertArrayEquals;
+import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeThat;
 
 @RunWith(AndroidJUnit4.class)
 public class RealmJsonTests {
@@ -363,6 +371,220 @@ public class RealmJsonTests {
         assertEquals(1, realm.where(Dog.class).equalTo("name", "Fido-3").findAll().size());
     }
 
+    @Test
+    public void createFromJson_respectDefaultValues() throws JSONException {
+        final long fieldLongPrimaryKeyValue = DefaultValueOfField.FIELD_LONG_PRIMARY_KEY_DEFAULT_VALUE + 1;
+
+        // Step 1: Prepare almost empty JSON
+        final JSONObject json = new JSONObject();
+        json.put(DefaultValueOfField.FIELD_LONG_PRIMARY_KEY, fieldLongPrimaryKeyValue);
+
+        // Step 2: Update with almost empty JSONObject
+        realm.beginTransaction();
+        final DefaultValueOfField managedObj = realm.createOrUpdateObjectFromJson(DefaultValueOfField.class, json);
+        realm.commitTransaction();
+
+        // Step 3: Check that default values are applied
+        assertEquals(DefaultValueOfField.FIELD_IGNORED_DEFAULT_VALUE,
+                managedObj.getFieldIgnored());
+        assertEquals(DefaultValueOfField.FIELD_STRING_DEFAULT_VALUE, managedObj.getFieldString());
+        assertFalse(TextUtils.isEmpty(managedObj.getFieldRandomString()));
+        assertEquals(DefaultValueOfField.FIELD_SHORT_DEFAULT_VALUE, managedObj.getFieldShort());
+        assertEquals(DefaultValueOfField.FIELD_INT_DEFAULT_VALUE, managedObj.getFieldInt());
+        assertEquals(fieldLongPrimaryKeyValue, managedObj.getFieldLongPrimaryKey());
+        assertEquals(DefaultValueOfField.FIELD_LONG_DEFAULT_VALUE, managedObj.getFieldLong());
+        assertEquals(DefaultValueOfField.FIELD_BYTE_DEFAULT_VALUE, managedObj.getFieldByte());
+        assertEquals(DefaultValueOfField.FIELD_FLOAT_DEFAULT_VALUE, managedObj.getFieldFloat(), 0f);
+        assertEquals(DefaultValueOfField.FIELD_DOUBLE_DEFAULT_VALUE, managedObj.getFieldDouble(), 0d);
+        assertEquals(DefaultValueOfField.FIELD_BOOLEAN_DEFAULT_VALUE, managedObj.isFieldBoolean());
+        assertEquals(DefaultValueOfField.FIELD_DATE_DEFAULT_VALUE, managedObj.getFieldDate());
+        assertTrue(Arrays.equals(DefaultValueOfField.FIELD_BINARY_DEFAULT_VALUE, managedObj.getFieldBinary()));
+        assertEquals(RandomPrimaryKey.FIELD_INT_DEFAULT_VALUE, managedObj.getFieldObject().getFieldInt());
+        assertEquals(1, managedObj.getFieldList().size());
+        assertEquals(RandomPrimaryKey.FIELD_INT_DEFAULT_VALUE, managedObj.getFieldList().first().getFieldInt());
+
+        // make sure that excess object by default value is not created.
+        assertEquals(2, realm.where(RandomPrimaryKey.class).count());
+    }
+
+    @Test
+    public void createFromJson_defaultValuesAreIgnored() throws JSONException {
+        final long fieldLongPrimaryKeyValue = DefaultValueOfField.FIELD_LONG_PRIMARY_KEY_DEFAULT_VALUE + 1;
+
+        // Step 1: Prepare JSON
+        final String fieldIgnoredValue = DefaultValueOfField.FIELD_IGNORED_DEFAULT_VALUE + ".modified";
+        final String fieldStringValue = DefaultValueOfField.FIELD_STRING_DEFAULT_VALUE + ".modified";
+        final String fieldRandomStringValue = "non-random";
+        final short fieldShortValue = (short) (DefaultValueOfField.FIELD_SHORT_DEFAULT_VALUE + 1);
+        final int fieldIntValue = DefaultValueOfField.FIELD_INT_DEFAULT_VALUE + 1;
+        final long fieldLongValue = DefaultValueOfField.FIELD_LONG_DEFAULT_VALUE + 1;
+        final byte fieldByteValue = (byte) (DefaultValueOfField.FIELD_BYTE_DEFAULT_VALUE + 1);
+        final float fieldFloatValue = DefaultValueOfField.FIELD_FLOAT_DEFAULT_VALUE + 1;
+        final double fieldDoubleValue = DefaultValueOfField.FIELD_DOUBLE_DEFAULT_VALUE + 1;
+        final boolean fieldBooleanValue = !DefaultValueOfField.FIELD_BOOLEAN_DEFAULT_VALUE;
+        final Date fieldDateValue = new Date(DefaultValueOfField.FIELD_DATE_DEFAULT_VALUE.getTime() + 1);
+        final byte[] fieldBinaryValue = {(byte) (DefaultValueOfField.FIELD_BINARY_DEFAULT_VALUE[0] - 1)};
+        final int fieldObjectIntValue = RandomPrimaryKey.FIELD_INT_DEFAULT_VALUE + 1;
+        final int fieldListIntValue = RandomPrimaryKey.FIELD_INT_DEFAULT_VALUE + 2;
+
+        final JSONObject json = new JSONObject();
+        json.put(DefaultValueOfField.FIELD_LONG_PRIMARY_KEY, fieldLongPrimaryKeyValue);
+        json.put(DefaultValueOfField.FIELD_IGNORED, fieldIgnoredValue);
+        json.put(DefaultValueOfField.FIELD_STRING, fieldStringValue);
+        json.put(DefaultValueOfField.FIELD_RANDOM_STRING, fieldRandomStringValue);
+        json.put(DefaultValueOfField.FIELD_SHORT, fieldShortValue);
+        json.put(DefaultValueOfField.FIELD_INT, fieldIntValue);
+        json.put(DefaultValueOfField.FIELD_LONG, fieldLongValue);
+        json.put(DefaultValueOfField.FIELD_BYTE, fieldByteValue);
+        json.put(DefaultValueOfField.FIELD_FLOAT, fieldFloatValue);
+        json.put(DefaultValueOfField.FIELD_DOUBLE, fieldDoubleValue);
+        json.put(DefaultValueOfField.FIELD_BOOLEAN, fieldBooleanValue);
+        json.put(DefaultValueOfField.FIELD_DATE, ISO8601Utils.format(fieldDateValue, true));
+        json.put(DefaultValueOfField.FIELD_BINARY, Base64.encodeToString(fieldBinaryValue, Base64.DEFAULT));
+        // value for 'fieldObject'
+        final JSONObject fieldObjectJson = new JSONObject();
+        fieldObjectJson.put(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY, "pk of fieldObject");
+        fieldObjectJson.put(RandomPrimaryKey.FIELD_INT, fieldObjectIntValue);
+        json.put(DefaultValueOfField.FIELD_OBJECT, fieldObjectJson);
+        // value for 'fieldList'
+        final JSONArray fieldListArrayJson = new JSONArray();
+        final JSONObject fieldListItem0Json = new JSONObject();
+        fieldListItem0Json.put(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY, "pk1 of fieldList");
+        fieldListItem0Json.put(RandomPrimaryKey.FIELD_INT, fieldListIntValue);
+        fieldListArrayJson.put(fieldListItem0Json);
+        final JSONObject fieldListItem1Json = new JSONObject();
+        fieldListItem1Json.put(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY, "pk2 of fieldList");
+        fieldListItem1Json.put(RandomPrimaryKey.FIELD_INT, fieldListIntValue + 1);
+        fieldListArrayJson.put(fieldListItem1Json);
+        json.put(DefaultValueOfField.FIELD_LIST, fieldListArrayJson);
+
+        // Step 3: Update with JSONObject
+        realm.beginTransaction();
+        final DefaultValueOfField managedObj = realm.createOrUpdateObjectFromJson(DefaultValueOfField.class, json);
+        realm.commitTransaction();
+
+        // Step 4: Check that properly created
+        assertEquals(DefaultValueOfField.FIELD_IGNORED_DEFAULT_VALUE/*not fieldIgnoredValue*/,
+                managedObj.getFieldIgnored());
+        assertEquals(fieldStringValue, managedObj.getFieldString());
+        assertEquals(fieldRandomStringValue, managedObj.getFieldRandomString());
+        assertEquals(fieldShortValue, managedObj.getFieldShort());
+        assertEquals(fieldIntValue, managedObj.getFieldInt());
+        assertEquals(fieldLongPrimaryKeyValue, managedObj.getFieldLongPrimaryKey());
+        assertEquals(fieldLongValue, managedObj.getFieldLong());
+        assertEquals(fieldByteValue, managedObj.getFieldByte());
+        assertEquals(fieldFloatValue, managedObj.getFieldFloat(), 0f);
+        assertEquals(fieldDoubleValue, managedObj.getFieldDouble(), 0d);
+        assertEquals(fieldBooleanValue, managedObj.isFieldBoolean());
+        assertEquals(fieldDateValue, managedObj.getFieldDate());
+        assertTrue(Arrays.equals(fieldBinaryValue, managedObj.getFieldBinary()));
+        assertEquals(fieldObjectJson.getString(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY),
+                managedObj.getFieldObject().getFieldRandomPrimaryKey());
+        assertEquals(fieldObjectIntValue, managedObj.getFieldObject().getFieldInt());
+        assertEquals(2, managedObj.getFieldList().size());
+        assertEquals(fieldListItem0Json.get(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY),
+                managedObj.getFieldList().get(0).getFieldRandomPrimaryKey());
+        assertEquals(fieldListIntValue, managedObj.getFieldList().get(0).getFieldInt());
+        assertEquals(fieldListItem1Json.get(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY),
+                managedObj.getFieldList().get(1).getFieldRandomPrimaryKey());
+        assertEquals(fieldListIntValue + 1, managedObj.getFieldList().get(1).getFieldInt());
+
+        // make sure that excess object by default value is not created.
+        assertEquals(3, realm.where(RandomPrimaryKey.class).count());
+    }
+
+    @Test
+    public void updateFromJson_defaultValuesAreIgnored() throws JSONException {
+        final long fieldLongPrimaryKeyValue = DefaultValueOfField.FIELD_LONG_PRIMARY_KEY_DEFAULT_VALUE + 1;
+
+        // Step 1: Create an object with default values
+        final DefaultValueOfField original;
+        realm.beginTransaction(); {
+            original = realm.createObject(DefaultValueOfField.class, fieldLongPrimaryKeyValue);
+        }
+        realm.commitTransaction();
+
+        // Step 2: Prepare JSON
+        final String fieldIgnoredValue = DefaultValueOfField.FIELD_IGNORED_DEFAULT_VALUE + ".modified";
+        final String fieldStringValue = DefaultValueOfField.FIELD_STRING_DEFAULT_VALUE + ".modified";
+        final String fieldRandomStringValue = "non-random";
+        final short fieldShortValue = (short) (DefaultValueOfField.FIELD_SHORT_DEFAULT_VALUE + 1);
+        final int fieldIntValue = DefaultValueOfField.FIELD_INT_DEFAULT_VALUE + 1;
+        final long fieldLongValue = DefaultValueOfField.FIELD_LONG_DEFAULT_VALUE + 1;
+        final byte fieldByteValue = (byte) (DefaultValueOfField.FIELD_BYTE_DEFAULT_VALUE + 1);
+        final float fieldFloatValue = DefaultValueOfField.FIELD_FLOAT_DEFAULT_VALUE + 1;
+        final double fieldDoubleValue = DefaultValueOfField.FIELD_DOUBLE_DEFAULT_VALUE + 1;
+        final boolean fieldBooleanValue = !DefaultValueOfField.FIELD_BOOLEAN_DEFAULT_VALUE;
+        final Date fieldDateValue = new Date(DefaultValueOfField.FIELD_DATE_DEFAULT_VALUE.getTime() + 1);
+        final byte[] fieldBinaryValue = {(byte) (DefaultValueOfField.FIELD_BINARY_DEFAULT_VALUE[0] - 1)};
+        final int fieldObjectIntValue = RandomPrimaryKey.FIELD_INT_DEFAULT_VALUE + 1;
+        final int fieldListIntValue = RandomPrimaryKey.FIELD_INT_DEFAULT_VALUE + 2;
+
+        final JSONObject json = new JSONObject();
+        json.put(DefaultValueOfField.FIELD_LONG_PRIMARY_KEY, fieldLongPrimaryKeyValue);
+        json.put(DefaultValueOfField.FIELD_IGNORED, fieldIgnoredValue);
+        json.put(DefaultValueOfField.FIELD_STRING, fieldStringValue);
+        json.put(DefaultValueOfField.FIELD_RANDOM_STRING, fieldRandomStringValue);
+        json.put(DefaultValueOfField.FIELD_SHORT, fieldShortValue);
+        json.put(DefaultValueOfField.FIELD_INT, fieldIntValue);
+        json.put(DefaultValueOfField.FIELD_LONG, fieldLongValue);
+        json.put(DefaultValueOfField.FIELD_BYTE, fieldByteValue);
+        json.put(DefaultValueOfField.FIELD_FLOAT, fieldFloatValue);
+        json.put(DefaultValueOfField.FIELD_DOUBLE, fieldDoubleValue);
+        json.put(DefaultValueOfField.FIELD_BOOLEAN, fieldBooleanValue);
+        json.put(DefaultValueOfField.FIELD_DATE, ISO8601Utils.format(fieldDateValue, true));
+        json.put(DefaultValueOfField.FIELD_BINARY, Base64.encodeToString(fieldBinaryValue, Base64.DEFAULT));
+        // value for 'fieldObject'
+        final JSONObject fieldObjectJson = new JSONObject();
+        fieldObjectJson.put(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY,
+                original.getFieldObject().getFieldRandomPrimaryKey());
+        fieldObjectJson.put(RandomPrimaryKey.FIELD_INT, fieldObjectIntValue);
+        json.put(DefaultValueOfField.FIELD_OBJECT, fieldObjectJson);
+        // value for 'fieldList'
+        final JSONArray fieldListArrayJson = new JSONArray();
+        final JSONObject fieldListItem0Json = new JSONObject(); // to be added
+        fieldListItem0Json.put(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY,  "unique value");
+        fieldListItem0Json.put(RandomPrimaryKey.FIELD_INT, fieldListIntValue);
+        fieldListArrayJson.put(fieldListItem0Json);
+        final JSONObject fieldListItem1Json = new JSONObject(); // to be updated
+        fieldListItem1Json.put(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY,
+                original.getFieldList().first().getFieldRandomPrimaryKey());
+        fieldListItem1Json.put(RandomPrimaryKey.FIELD_INT, fieldListIntValue + 1);
+        fieldListArrayJson.put(fieldListItem1Json);
+        json.put(DefaultValueOfField.FIELD_LIST, fieldListArrayJson);
+
+        // Step 3: Update with JSONObject
+        realm.beginTransaction();
+        final DefaultValueOfField managedObj = realm.createOrUpdateObjectFromJson(DefaultValueOfField.class, json);
+        realm.commitTransaction();
+
+        // Step 4: Check that properly updated
+        assertEquals(DefaultValueOfField.FIELD_IGNORED_DEFAULT_VALUE/*not fieldIgnoredValue*/,
+                managedObj.getFieldIgnored());
+        assertEquals(fieldStringValue, managedObj.getFieldString());
+        assertEquals(fieldRandomStringValue, managedObj.getFieldRandomString());
+        assertEquals(fieldShortValue, managedObj.getFieldShort());
+        assertEquals(fieldIntValue, managedObj.getFieldInt());
+        assertEquals(fieldLongPrimaryKeyValue, managedObj.getFieldLongPrimaryKey());
+        assertEquals(fieldLongValue, managedObj.getFieldLong());
+        assertEquals(fieldByteValue, managedObj.getFieldByte());
+        assertEquals(fieldFloatValue, managedObj.getFieldFloat(), 0f);
+        assertEquals(fieldDoubleValue, managedObj.getFieldDouble(), 0d);
+        assertEquals(fieldBooleanValue, managedObj.isFieldBoolean());
+        assertEquals(fieldDateValue, managedObj.getFieldDate());
+        assertTrue(Arrays.equals(fieldBinaryValue, managedObj.getFieldBinary()));
+        assertEquals(fieldObjectIntValue, managedObj.getFieldObject().getFieldInt());
+        assertEquals(2, managedObj.getFieldList().size());
+        assertEquals("unique value", managedObj.getFieldList().get(0).getFieldRandomPrimaryKey());
+        assertEquals(fieldListIntValue, managedObj.getFieldList().get(0).getFieldInt());
+        assertEquals(fieldListItem1Json.get(RandomPrimaryKey.FIELD_RANDOM_PRIMARY_KEY),
+                managedObj.getFieldList().get(1).getFieldRandomPrimaryKey());
+        assertEquals(fieldListIntValue + 1, managedObj.getFieldList().get(1).getFieldInt());
+
+        // make sure that excess object by default value is not created.
+        assertEquals(3/* 2 updated + 1 added*/, realm.where(RandomPrimaryKey.class).count());
+    }
+
     // Test if Json object doesn't have the field, then the field should have default value.
     @Test
     public void createObjectFromJson_noValues() throws JSONException {
@@ -396,6 +618,7 @@ public class RealmJsonTests {
         realm.beginTransaction();
         try {
             realm.createObjectFromJson(AllTypes.class, json);
+            fail();
         } catch (RealmException ignored) {
         } finally {
             realm.commitTransaction();
@@ -409,6 +632,7 @@ public class RealmJsonTests {
     @Test
     public void createObjectFromJson_respectIgnoredFields() throws JSONException {
         JSONObject json = new JSONObject();
+        json.put("id", 0);
         json.put("indexString", "Foo");
         json.put("notIndexString", "Bar");
         json.put("ignoreString", "Baz");
@@ -472,12 +696,16 @@ public class RealmJsonTests {
 
     @Test
     public void createAllFromJson_streamNull() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.createAllFromJson(AllTypes.class, (InputStream) null);
         assertEquals(0, realm.where(AllTypes.class).count());
     }
 
     @Test
     public void createObjectFromJson_streamAllSimpleTypes() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "all_simple_types.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -496,6 +724,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamDateAsLong() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "date_as_long.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -509,6 +739,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamDateAsString() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "date_as_string.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -522,6 +754,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamDateAsISO8601String() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "date_as_iso8601_string.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -540,6 +774,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamChildObject() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "single_child_object.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -552,6 +788,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamEmptyChildObjectList() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "realmlist_empty.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -564,6 +802,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamChildObjectList() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "realmlist.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -576,6 +816,8 @@ public class RealmJsonTests {
 
     @Test
     public void createAllFromJson_streamArray() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "array.json");
         realm.beginTransaction();
         realm.createAllFromJson(Dog.class, in);
@@ -589,6 +831,8 @@ public class RealmJsonTests {
     // Test if Json object doesn't have the field, then the field should have default value. Stream version.
     @Test
     public void createObjectFromJson_streamNoValues() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "other_json_object.json");
         realm.beginTransaction();
         realm.createObjectFromJson(AllTypes.class, in);
@@ -610,6 +854,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamNullClass() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "array.json");
         realm.beginTransaction();
         assertNull(realm.createObjectFromJson(null, in));
@@ -619,6 +865,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamNullJson() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "all_types_invalid.json");
         realm.beginTransaction();
         try {
@@ -633,6 +881,8 @@ public class RealmJsonTests {
 
     @Test
     public void createObjectFromJson_streamNullInputStream() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.beginTransaction();
         assertNull(realm.createObjectFromJson(AnnotationTypes.class, (InputStream) null));
         realm.commitTransaction();
@@ -644,6 +894,8 @@ public class RealmJsonTests {
      */
     @Test
     public void createOrUpdateObjectFromJson_streamNullValues() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         AllTypesPrimaryKey obj = new AllTypesPrimaryKey();
         Date date = new Date(0);
         obj.setColumnLong(1); // ID
@@ -679,6 +931,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateObjectFromJson_streamNullClass() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream in = TestHelper.loadJsonFromAssets(context, "all_types_primary_key_field_only.json");
         realm.beginTransaction();
         assertNull(realm.createOrUpdateObjectFromJson(null, in));
@@ -688,6 +942,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateObjectFromJson_streamInvalidJson() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         AllTypesPrimaryKey obj = new AllTypesPrimaryKey();
         obj.setColumnLong(1);
         realm.beginTransaction();
@@ -708,6 +964,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateObjectFromJson_streamNoPrimaryKeyThrows() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         try {
             realm.createOrUpdateObjectFromJson(AllTypes.class, new TestHelper.StubInputStream());
             fail();
@@ -717,6 +975,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateAllFromJson_streamInvalidJSonCurlyBracketThrows() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         try {
             realm.createOrUpdateAllFromJson(AllTypesPrimaryKey.class, TestHelper.stringToStream("{"));
             fail();
@@ -726,6 +986,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateObjectFromJson_streamIgnoreUnsetProperties() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.beginTransaction();
         realm.createOrUpdateAllFromJson(AllTypesPrimaryKey.class, TestHelper.loadJsonFromAssets(context, "list_alltypes_primarykey.json"));
         realm.commitTransaction();
@@ -740,6 +1002,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateObjectFromJson_inputStream() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.beginTransaction();
 
         AllTypesPrimaryKey obj = new AllTypesPrimaryKey();
@@ -761,9 +1025,11 @@ public class RealmJsonTests {
      */
     @Test
     public void createOrUpdateObjectFromJson_objectWithPrimaryKeySetValueDirectlyFromStream() throws JSONException, IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream stream = TestHelper.stringToStream("{\"id\": 1, \"name\": \"bar\"}");
         realm.beginTransaction();
-        realm.createObject(OwnerPrimaryKey.class); // id = 0
+        realm.createObject(OwnerPrimaryKey.class, 0); // id = 0
         realm.createOrUpdateObjectFromJson(OwnerPrimaryKey.class, stream);
         realm.commitTransaction();
 
@@ -961,7 +1227,7 @@ public class RealmJsonTests {
     public void createOrUpdateObjectFromJson_objectWithPrimaryKeySetValueDirectlyFromJsonObject() throws JSONException {
         JSONObject newObject = new JSONObject("{\"id\": 1, \"name\": \"bar\"}");
         realm.beginTransaction();
-        realm.createObject(OwnerPrimaryKey.class); // id = 0
+        realm.createObject(OwnerPrimaryKey.class, 0); // id = 0
         realm.createOrUpdateObjectFromJson(OwnerPrimaryKey.class, newObject);
         realm.commitTransaction();
 
@@ -994,6 +1260,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateAllFromJson_streamNoPrimaryKeyThrows() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         try {
             realm.createOrUpdateAllFromJson(AllTypes.class, new TestHelper.StubInputStream());
             fail();
@@ -1003,6 +1271,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateAllFromJson_streamInvalidJSonBracketThrows() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         try {
             realm.createOrUpdateAllFromJson(AllTypesPrimaryKey.class, TestHelper.stringToStream("["));
             fail();
@@ -1068,6 +1338,8 @@ public class RealmJsonTests {
 
     @Test
     public void createOrUpdateAllFromJson_inputStream() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.beginTransaction();
         realm.createOrUpdateAllFromJson(AllTypesPrimaryKey.class, TestHelper.loadJsonFromAssets(context, "list_alltypes_primarykey.json"));
         realm.commitTransaction();
@@ -1107,6 +1379,8 @@ public class RealmJsonTests {
     // Test creating objects form JSON stream, all nullable fields with null values or non-null values
     @Test
     public void createAllFromJson_nullTypesStreamJSONWithNulls() throws IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         realm.beginTransaction();
         realm.createAllFromJson(NullTypes.class, TestHelper.loadJsonFromAssets(context, "nulltypes.json"));
         realm.commitTransaction();
@@ -1140,7 +1414,7 @@ public class RealmJsonTests {
 
         RealmResults<NullTypes> nullTypesRealmResults = realm.where(NullTypes.class).findAll();
         assertEquals(2, nullTypesRealmResults.size());
-        checkNullableValuesAreNotNull(nullTypesRealmResults.first());
+        checkNullableValuesAreNotNull(nullTypesRealmResults.where().equalTo("id", 1).findFirst());
 
         // Update object with id 1, nullable fields should have null values
         JSONArray array = new JSONArray(json);
@@ -1264,6 +1538,8 @@ public class RealmJsonTests {
      */
     @Test
     public void createObjectFromJson_nullTypesJSONStreamToNotNullFields() throws IOException, JSONException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         String json = TestHelper.streamToString(TestHelper.loadJsonFromAssets(context, "nulltypes_invalid.json"));
         JSONArray array = new JSONArray(json);
 
@@ -1367,7 +1643,7 @@ public class RealmJsonTests {
     public void createObjectFromJson_objectWithPrimaryKeySetValueDirectlyFromJsonObject() throws JSONException {
         JSONObject newObject = new JSONObject("{\"id\": 1, \"name\": \"bar\"}");
         realm.beginTransaction();
-        realm.createObject(OwnerPrimaryKey.class); // id = 0
+        realm.createObject(OwnerPrimaryKey.class, 0); // id = 0
         realm.createObjectFromJson(OwnerPrimaryKey.class, newObject);
         realm.commitTransaction();
 
@@ -1391,9 +1667,11 @@ public class RealmJsonTests {
      */
     @Test
     public void createObjectFromJson_objectWithPrimaryKeySetValueDirectlyFromStream() throws JSONException, IOException {
+        assumeThat(Build.VERSION.SDK_INT, greaterThanOrEqualTo(Build.VERSION_CODES.HONEYCOMB));
+
         InputStream stream = TestHelper.stringToStream("{\"id\": 1, \"name\": \"bar\"}");
         realm.beginTransaction();
-        realm.createObject(OwnerPrimaryKey.class); // id = 0
+        realm.createObject(OwnerPrimaryKey.class, 0); // id = 0
         realm.createObjectFromJson(OwnerPrimaryKey.class, stream);
         realm.commitTransaction();
 

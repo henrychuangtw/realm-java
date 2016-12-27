@@ -16,8 +16,6 @@
 
 package io.realm.benchmarks;
 
-import android.support.test.InstrumentationRegistry;
-
 import org.junit.runner.RunWith;
 
 import dk.ilios.spanner.AfterExperiment;
@@ -42,7 +40,7 @@ public class RealmObjectWriteBenchmarks {
 
     @BeforeExperiment
     public void before() {
-        RealmConfiguration config = new RealmConfiguration.Builder(InstrumentationRegistry.getTargetContext()).build();
+        RealmConfiguration config = new RealmConfiguration.Builder().build();
         Realm.deleteRealm(config);
         realm = Realm.getInstance(config);
         realm.beginTransaction();
@@ -56,9 +54,23 @@ public class RealmObjectWriteBenchmarks {
     }
 
     @Benchmark
-    public void writeString(long reps) {
+    public void writeShortString(long reps) {
         for (long i = 0; i < reps; i++) {
             writeObject.setColumnString("Foo");
+        }
+    }
+
+    @Benchmark
+    public void writeMediumString(long reps) {
+        for (long i = 0; i < reps; i++) {
+            writeObject.setColumnString("ABCDEFHIJKLMNOPQ");
+        }
+    }
+
+    @Benchmark
+    public void writeLongString(long reps) {
+        for (long i = 0; i < reps; i++) {
+            writeObject.setColumnString("ABCDEFHIJKLMNOPQABCDEFHIJKLMNOPQABCDEFHIJKLMNOPQABCDEFHIJKLMNOPQ");
         }
     }
 

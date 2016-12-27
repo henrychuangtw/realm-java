@@ -16,17 +16,17 @@
 
 package io.realm.internal;
 
-import java.io.Closeable;
 import java.util.Date;
 
 import io.realm.Case;
 import io.realm.Sort;
 import io.realm.internal.async.BadVersionException;
 
-public class TableQuery implements Closeable {
+public class TableQuery implements NativeObject {
     protected boolean DEBUG = false;
 
     protected long nativePtr;
+    private static final long nativeFinalizerPtr = nativeGetFinalizerPtr();
     protected final Table table;
     // Don't convert this into local variable and don't remove this.
     // Core requests Query to hold the TableView reference which it is built from.
@@ -48,6 +48,7 @@ public class TableQuery implements Closeable {
         this.table = table;
         this.nativePtr = nativeQueryPtr;
         this.origin = null;
+        context.addReference(this);
     }
 
     public TableQuery(Context context, Table table, long nativeQueryPtr, TableOrView origin) {
@@ -58,28 +59,17 @@ public class TableQuery implements Closeable {
         this.table = table;
         this.nativePtr = nativeQueryPtr;
         this.origin = origin;
+        context.addReference(this);
     }
 
-    public void close() {
-        synchronized (context) {
-            if (nativePtr != 0) {
-                nativeClose(nativePtr);
-
-                if (DEBUG)
-                    System.err.println("++++ Query CLOSE, ptr= " + nativePtr);
-
-                nativePtr = 0;
-            }
-        }
+    @Override
+    public long getNativePtr() {
+        return nativePtr;
     }
 
-    protected void finalize() {
-        synchronized (context) {
-            if (nativePtr != 0) {
-                context.asyncDisposeQuery(nativePtr);
-                nativePtr = 0; // Set to 0 if finalize is called before close() for some reason
-            }
-        }
+    @Override
+    public long getNativeFinalizerPtr() {
+        return nativeFinalizerPtr;
     }
 
     /**
@@ -420,11 +410,15 @@ public class TableQuery implements Closeable {
 
     // Searching methods.
 
+    @Deprecated // Doesn't seem to be used
     public long find(long fromTableRow) {
         validateQuery();
         return nativeFind(nativePtr, fromTableRow);
     }
 
+    /**
+     * Returns the table row index for the first element matching the query.
+     */
     public long find() {
         validateQuery();
         return nativeFind(nativePtr, 0);
@@ -433,106 +427,87 @@ public class TableQuery implements Closeable {
     /**
      * Performs a find query then handover the resulted Row (ready to be imported by another thread/shared_group).
      *
-     * @param bgSharedGroupPtr current shared_group from which to operate the query.
-     * @param nativeReplicationPtr replication pointer associated with the shared_group.
+     * @param sharedRealm current {@link SharedRealm }from which to operate the query.
      * @param ptrQuery query to run the the find against.
      * @return pointer to the handover result (table_view).
      */
-    public long findWithHandover(long bgSharedGroupPtr, long nativeReplicationPtr, long ptrQuery) {
-        validateQuery();
+    public static long findWithHandover(SharedRealm sharedRealm, long ptrQuery) {
         // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
-        return nativeFindWithHandover(bgSharedGroupPtr, ptrQuery, 0);
+        return nativeFindWithHandover(sharedRealm.getNativePtr(), ptrQuery, 0);
     }
 
     public TableView findAll(long start, long end, long limit) {
         validateQuery();
 
-        // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
         long nativeViewPtr = nativeFindAll(nativePtr, start, end, limit);
-        try {
-            return new TableView(this.context, this.table, nativeViewPtr, this);
-        } catch (RuntimeException e) {
-            TableView.nativeClose(nativeViewPtr);
-            throw e;
-        }
+        return new TableView(this.context, this.table, nativeViewPtr, this);
     }
 
     public TableView findAll() {
         validateQuery();
 
-        // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
         long nativeViewPtr = nativeFindAll(nativePtr, 0, Table.INFINITE, Table.INFINITE);
-        try {
-            return new TableView(this.context, this.table, nativeViewPtr, this);
-        } catch (RuntimeException e) {
-            TableView.nativeClose(nativeViewPtr);
-            throw e;
-        }
+        return new TableView(this.context, this.table, nativeViewPtr, this);
     }
 
     // handover find* methods
     // this will use a background SharedGroup to import the query (using the handover object)
     // run the query, and return the table view to the caller SharedGroup using the handover object.
-    public long findAllWithHandover(long bgSharedGroupPtr, long nativeReplicationPtr,  long ptrQuery) throws BadVersionException {
-        validateQuery();
-        // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
-        return nativeFindAllWithHandover(bgSharedGroupPtr, ptrQuery, 0, Table.INFINITE, Table.INFINITE);
+    public static long findAllWithHandover(SharedRealm sharedRealm, long ptrQuery) throws BadVersionException {
+        return nativeFindAllWithHandover(sharedRealm.getNativePtr(), ptrQuery, 0, Table.INFINITE, Table.INFINITE);
     }
 
-    public long findDistinctWithHandover(long bgSharedGroupPtr, long nativeReplicationPtr,  long ptrQuery, long columnIndex) throws BadVersionException {
-        validateQuery();
-        // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
-        return nativeGetDistinctViewWithHandover(bgSharedGroupPtr, ptrQuery, columnIndex);
+    public static long findDistinctWithHandover(SharedRealm sharedRealm, long ptrQuery, long columnIndex) throws BadVersionException {
+        return nativeGetDistinctViewWithHandover(sharedRealm.getNativePtr(), ptrQuery, columnIndex);
     }
 
-    public long findAllSortedWithHandover(long bgSharedGroupPtr, long nativeReplicationPtr, long ptrQuery, long columnIndex, Sort sortOrder) throws BadVersionException {
-        validateQuery();
-        // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
-        return nativeFindAllSortedWithHandover(bgSharedGroupPtr, ptrQuery, 0, Table.INFINITE, Table.INFINITE, columnIndex, sortOrder.getValue());
+    public static long findAllSortedWithHandover(SharedRealm sharedRealm, long ptrQuery, long columnIndex, Sort sortOrder) throws BadVersionException {
+        return nativeFindAllSortedWithHandover(sharedRealm.getNativePtr(), ptrQuery, 0, Table.INFINITE, Table.INFINITE, columnIndex, sortOrder.getValue());
     }
 
-    public long findAllMultiSortedWithHandover(long bgSharedGroupPtr, long nativeReplicationPtr, long ptrQuery, long[] columnIndices, Sort[] sortOrders) throws BadVersionException {
-        validateQuery();
-        // Execute the disposal of abandoned realm objects each time a new realm object is created
-        context.executeDelayedDisposal();
+    public static long findAllMultiSortedWithHandover(SharedRealm sharedRealm, long ptrQuery, long[] columnIndices, Sort[] sortOrders) throws BadVersionException {
         boolean[] ascendings = getNativeSortOrderValues(sortOrders);
-        return nativeFindAllMultiSortedWithHandover(bgSharedGroupPtr, ptrQuery, 0, Table.INFINITE, Table.INFINITE, columnIndices, ascendings);
+        return nativeFindAllMultiSortedWithHandover(sharedRealm.getNativePtr(), ptrQuery, 0, Table.INFINITE, Table.INFINITE, columnIndices, ascendings);
     }
 
+    public static long[] batchUpdateQueries(SharedRealm sharedRealm, long[] handoverQueries, long[][] parameters,
+                                            long[][] queriesParameters, boolean[][] multiSortOrder)
+            throws BadVersionException {
+        return nativeBatchUpdateQueries(sharedRealm.getNativePtr(), handoverQueries, parameters, queriesParameters,
+                multiSortOrder);
+    }
     /**
      * Imports a TableView from a worker thread to the caller thread.
      *
      * @param handoverPtr pointer to the handover object
-     * @param callerSharedGroupPtr pointer to the SharedGroup on the caller thread.
+     * @param sharedRealm the SharedRealm on the caller thread.
      * @return the TableView on the caller thread.
      * @throws BadVersionException if the worker thread and caller thread are not at the same version.
      */
-    public TableView importHandoverTableView(long handoverPtr, long callerSharedGroupPtr) throws BadVersionException {
-        long nativeTvPtr = nativeImportHandoverTableViewIntoSharedGroup(handoverPtr, callerSharedGroupPtr);
-        try {
-            return new TableView(this.context, this.table, nativeTvPtr);
-        } catch (RuntimeException e) {
-            if (nativeTvPtr != 0) {
-                TableView.nativeClose(nativeTvPtr);
-            }
-            throw e;
-        }
+    public TableView importHandoverTableView(long handoverPtr, SharedRealm sharedRealm) throws BadVersionException {
+        long nativeTvPtr = nativeImportHandoverTableViewIntoSharedGroup(handoverPtr, sharedRealm.getNativePtr());
+        return new TableView(this.context, this.table, nativeTvPtr);
+    }
+
+    /**
+     * Imports a row from a worker thread to the caller thread.
+     *
+     * @param handoverRowPtr pointer to the handover row object
+     * @param sharedRealm the SharedRealm on the caller thread.
+     * @return the row pointer on the caller thread.
+     */
+    public static long importHandoverRow(long handoverRowPtr, SharedRealm sharedRealm) {
+        return nativeImportHandoverRowIntoSharedGroup(handoverRowPtr, sharedRealm.getNativePtr());
     }
 
     /**
      * Handovers the query, so it can be used by other SharedGroup (in different thread)
      *
-     * @param callerSharedGroupPtr native pointer to the SharedGroup holding the query
+     * @param sharedRealm the SharedGroup holding the query
      * @return native pointer to the handover query
      */
-    public long handoverQuery(long callerSharedGroupPtr) {
-        return nativeHandoverQuery(callerSharedGroupPtr, nativePtr);
+    public long handoverQuery(SharedRealm sharedRealm) {
+        return nativeHandoverQuery(sharedRealm.getNativePtr(), nativePtr);
     }
 
     //
@@ -715,17 +690,10 @@ public class TableQuery implements Closeable {
         return nativeCount(nativePtr, 0, Table.INFINITE, Table.INFINITE);
     }
 
-    // Deletion.
-    public long remove(long start, long end) {
-        validateQuery();
-        if (table.isImmutable()) throwImmutable();
-        return nativeRemove(nativePtr, start, end, Table.INFINITE);
-    }
-
     public long remove() {
         validateQuery();
         if (table.isImmutable()) throwImmutable();
-        return nativeRemove(nativePtr, 0, Table.INFINITE, Table.INFINITE);
+        return nativeRemove(nativePtr);
     }
 
     /**
@@ -743,7 +711,6 @@ public class TableQuery implements Closeable {
         throw new IllegalStateException("Mutable method call during read transaction.");
     }
 
-    protected static native void nativeClose(long nativeQueryPtr);
     private native String nativeValidateQuery(long nativeQueryPtr);
     private native void nativeTableview(long nativeQueryPtr, long nativeTableViewPtr);
     private native void nativeGroup(long nativeQueryPtr);
@@ -806,15 +773,16 @@ public class TableQuery implements Closeable {
     private native void nativeIsNull(long nativePtr, long columnIndices[]);
     private native void nativeIsNotNull(long nativePtr, long columnIndices[]);
     private native long nativeCount(long nativeQueryPtr, long start, long end, long limit);
-    private native long nativeRemove(long nativeQueryPtr, long start, long end, long limit);
-    private native long nativeImportHandoverTableViewIntoSharedGroup(long handoverTableViewPtr, long callerSharedGroupPtr) throws BadVersionException;
-    private native long nativeHandoverQuery(long callerSharedGroupPtr, long nativeQueryPtr);
-    public static native long nativeFindAllSortedWithHandover(long bgSharedGroupPtr, long nativeQueryPtr, long start, long end, long limit, long columnIndex, boolean ascending) throws BadVersionException;
-    public static native long nativeFindAllWithHandover(long bgSharedGroupPtr, long nativeQueryPtr, long start, long end, long limit) throws BadVersionException;
-    public static native long nativeGetDistinctViewWithHandover(long bgSharedGroupPtr, long nativeQueryPtr, long columnIndex) throws BadVersionException;
-    public static native long nativeFindWithHandover(long bgSharedGroupPtr, long nativeQueryPtr, long fromTableRow);
-    public static native long nativeFindAllMultiSortedWithHandover(long bgSharedGroupPtr, long nativeQueryPtr, long start, long end, long limit, long[] columnIndices, boolean[] ascending) throws BadVersionException;
-    public static native long nativeImportHandoverRowIntoSharedGroup(long handoverRowPtr, long callerSharedGroupPtr);
+    private native long nativeRemove(long nativeQueryPtr);
+    private native long nativeImportHandoverTableViewIntoSharedGroup(long handoverTableViewPtr, long callerSharedRealmPtr) throws BadVersionException;
+    private native long nativeHandoverQuery(long callerSharedRealmPtr, long nativeQueryPtr);
+    private static native long nativeFindAllSortedWithHandover(long bgSharedRealmPtr, long nativeQueryPtr, long start, long end, long limit, long columnIndex, boolean ascending) throws BadVersionException;
+    private static native long nativeFindAllWithHandover(long bgSharedRealmPtr, long nativeQueryPtr, long start, long end, long limit) throws BadVersionException;
+    private  static native long nativeGetDistinctViewWithHandover(long bgSharedRealmPtr, long nativeQueryPtr, long columnIndex) throws BadVersionException;
+    private static native long nativeFindWithHandover(long bgSharedRealmPtr, long nativeQueryPtr, long fromTableRow);
+    private static native long nativeFindAllMultiSortedWithHandover(long bgSharedRealmPtr, long nativeQueryPtr, long start, long end, long limit, long[] columnIndices, boolean[] ascending) throws BadVersionException;
+    private static native long nativeImportHandoverRowIntoSharedGroup(long handoverRowPtr, long callerSharedRealmPtr);
     public static native void nativeCloseQueryHandover(long nativePtr);
-    public static native long[] nativeBatchUpdateQueries(long bgSharedGroupPtr, long[] handoverQueries, long[][] parameters, long[][] queriesParameters, boolean[][] multiSortOrder) throws BadVersionException;
+    private static native long[] nativeBatchUpdateQueries(long bgSharedRealmPtr, long[] handoverQueries, long[][] parameters, long[][] queriesParameters, boolean[][] multiSortOrder) throws BadVersionException;
+    private static native long nativeGetFinalizerPtr();
 }

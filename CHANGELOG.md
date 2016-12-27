@@ -1,3 +1,185 @@
+## 2.3.0
+
+### Object Server API Changes (In Beta)
+
+* Add a default `UserStore` based on the Realm Object Store (`ObjectStoreUserStore`).
+
+## 2.2.2
+
+### Object Server API Changes (In Beta)
+
+* Disabled `Realm.compactRealm()` when sync is enabled as it might corrupt the Realm (https://github.com/realm/realm-core/issues/2345).
+
+### Bug fixes
+
+* "operation not permitted" issue when creating Realm file on some devices' external storage (#3629).
+
+### Enhancements
+
+* All major public classes are now non-final. This is mostly a compromise to support Mockito. All protected fields/methods are still not considered part of the public API and can change without notice (#3869).
+
+### Internal
+
+* Upgraded Realm Core to 2.1.0.
+* Upgraded Realm Sync to 1.0.0-BETA-5.0.
+
+## 2.2.1
+
+### Object Server API Changes (In Beta)
+
+* Fixed `SyncConfiguration.toString()` so it now outputs a correct description instead of an empty string (#3787).
+
+### Bug fixes
+
+* Added version number to the native library, preventing ReLinker from accidentally loading old code (#3775).
+* `Realm.getLocalInstanceCount(config)` throwing NullPointerException if called after all Realms have been closed (#3791).
+
+## 2.2.0
+
+### Object Server API Changes (In Beta)
+
+* Added support for `SyncUser.getManagementRealm()` and permission changes.
+
+### Bug fixes
+
+* Kotlin projects no longer create the `RealmDefaultModule` if no Realm model classes are present (#3746).
+* Remove `includedescriptorclasses` option from ProGuard rule file in order to support built-in shrinker of Android Gradle Plugin (#3714).
+* Unexpected `RealmMigrationNeededException` was thrown when a field was added to synced Realm.
+
+### Enhancements
+
+* Added support for the `annotationProcessor` configuration provided by Android Gradle Plugin 2.2.0 or later. Realm plugin adds its annotation processor to the `annotationProcessor` configuration instead of `apt` configuration if it is available and the `com.neenbedankt.android-apt` plugin is not used. In Kotlin projects, `kapt` is used instead of the `annotationProcessor` configuration (#3026).
+
+## 2.1.1
+
+### Bug fixes
+
+* Fixed a bug in `Realm.insert` and `Realm.insertOrUpdate` methods causing a `StackOverFlow` when you try to insert a cyclic graph of objects between Realms (#3732).
+
+### Object Server API Changes (In Beta)
+
+* Set default RxFactory to `SyncConfiguration`.
+
+### Bug fixes
+
+* ProGuard configuration introduced in 2.1.0 unexpectedly kept classes that did not have the @KeepMember annotation (#3689).
+
+## 2.1.0
+
+### Breaking changes
+
+* * `SecureUserStore` has been moved to its own GitHub repository: https://github.com/realm/realm-android-user-store
+  See https://github.com/realm/realm-android-user-store/blob/master/README.md for further info on how to include it.
+
+
+### Object Server API Changes (In Beta)
+
+* Renamed `User` to `SyncUser`, `Credentials` to `SyncCredentials` and `Session` to `SyncSession` to align names with Cocoa.
+* Removed `SyncManager.setLogLevel()`. Use `RealmLog.setLevel()` instead.
+* `SyncUser.logout()` now correctly clears `SyncUser.currentUser()` (#3638).
+* Missing ProGuard configuration for libraries used by Sync extension (#3596).
+* Error handler was not called when sync session failed (#3597).
+* Added `User.all()` that returns all known Realm Object Server users.
+* Upgraded Realm Sync to 1.0.0-BETA-3.2
+
+### Deprecated
+
+* `Logger`. Use `RealmLogger` instead.
+* `AndroidLogger`. The logger for Android is implemented in native code instead.
+
+### Bug fixes
+
+* The following were not kept by ProGuard: names of native methods not in the `io.realm.internal` package, names of classes used in method signature (#3596).
+* Permission error when a database file was located on external storage (#3140).
+* Memory leak when unsubscribing from a RealmResults/RealmObject RxJava Observable (#3552).
+
+### Enhancements
+
+* `Realm.compactRealm()` now works for encrypted Realms.
+* Added `first(E defaultValue)` and `last(E defaultValue)` methods to `RealmList` and `RealmResult`. These methods will return the provided object instead of throwing an `IndexOutOfBoundsException` if the list is empty.
+* Reduce transformer logger verbosity (#3608).
+* `RealmLog.setLevel(int)` for setting the log level across all loggers.
+
+### Internal
+
+* Upgraded Realm Core to 2.1.3
+
+### Credits
+
+* Thanks to Max Furman (@maxfurman) for adding support for `first()` and `last()` default values.
+
+## 2.0.2
+
+This release is not protocol-compatible with previous versions of the Realm Mobile Platform. The base library is still fully compatible.
+
+### Bug fixes
+
+* Build error when using Java 7 (#3563).
+
+### Internal
+
+* Upgraded Realm Core to 2.1.0
+* Upgraded Realm Sync to 1.0.0-BETA-2.0.
+
+## 2.0.1
+
+### Bug fixes
+
+* `android.net.conn.CONNECTIVITY_CHANGE` broadcast caused `RuntimeException` if sync extension was disabled (#3505).
+* `android.net.conn.CONNECTIVITY_CHANGE` was not delivered on Android 7 devices.
+* `distinctAsync` did not respect other query parameters (#3537).
+* `ConcurrentModificationException` from Gradle when building an application (#3501).
+
+### Internal
+
+* Upgraded to Realm Core 2.0.1 / Realm Sync 1.3-BETA
+
+## 2.0.0
+
+This release introduces support for the Realm Mobile Platform!
+See <https://realm.io/news/introducing-realm-mobile-platform/> for an overview of these great new features.
+
+### Breaking Changes
+
+* Files written by Realm 2.0 cannot be read by 1.x or earlier versions. Old files can still be opened.
+* It is now required to call `Realm.init(Context)` before calling any other Realm API.
+* Removed `RealmConfiguration.Builder(Context)`, `RealmConfiguration.Builder(Context, File)` and `RealmConfiguration.Builder(File)` constructors.
+* `isValid()` now always returns `true` instead of `false` for unmanaged `RealmObject` and `RealmList`. This puts it in line with the behaviour of the Cocoa and .NET API's (#3101).
+* armeabi is not supported anymore.
+* Added new `RealmFileException`.
+  - `IncompatibleLockFileException` has been removed and replaced by `RealmFileException` with kind `INCOMPATIBLE_LOCK_FILE`.
+  - `RealmIOExcpetion` has been removed and replaced by `RealmFileException`.
+* `RealmConfiguration.Builder.assetFile(Context, String)` has been renamed to `RealmConfiguration.Builder.assetFile(String)`.
+* Object with primary key is now required to define it when the object is created. This means that `Realm.createObject(Class<E>)` and `DynamicRealm.createObject(String)` now throws `RealmException` if they are used to create an object with a primary key field. Use `Realm.createObject(Class<E>, Object)` or `DynamicRealm.createObject(String, Object)` instead.
+* Importing from JSON without the primary key field defined in the JSON object now throws `IllegalArgumentException`.
+* Now `Realm.beginTransaction()`, `Realm.executeTransaction()` and `Realm.waitForChange()` throw `RealmMigrationNeededException` if a remote process introduces incompatible schema changes (#3409).
+* The primary key value of an object can no longer be changed after the object was created. Instead a new object must be created and all fields copied over.
+* Now `Realm.createObject(Class)` and `Realm.createObject(Class,Object)` take the values from the model's fields and default constructor. Creating objects through the `DynamicRealm` does not use these values (#777).
+* When `Realm.create*FromJson()`s create a new `RealmObject`, now they take the default values defined by the field itself and its default constructor for those fields that are not defined in the JSON object.
+
+### Enhancements
+
+* Added `realmObject.isManaged()`, `RealmObject.isManaged(obj)` and `RealmCollection.isManaged()` (#3101).
+* Added `RealmConfiguration.Builder.directory(File)`.
+* `RealmLog` has been moved to the public API. It is now possible to control which events Realm emit to Logcat. See the `RealmLog` class for more details.
+* Typed `RealmObject`s can now continue to access their fields properly even though the schema was changed while the Realm was open (#3409).
+* A `RealmMigrationNeededException` will be thrown with a cause to show the detailed message when a migration is needed and the migration block is not in the `RealmConfiguration`.
+
+
+### Bug fixes
+
+* Fixed a lint error in proxy classes when the 'minSdkVersion' of user's project is smaller than 11 (#3356).
+* Fixed a potential crash when there were lots of async queries waiting in the queue.
+* Fixed a bug causing the Realm Transformer to not transform field access in the model's constructors (#3361).
+* Fixed a bug causing a build failure when the Realm Transformer adds accessors to a model class that was already transformed in other project (#3469).
+* Fixed a bug causing the `NullPointerException` when calling getters/setters in the model's constructors (#2536).
+
+### Internal
+
+* Moved JNI build to CMake.
+* Updated Realm Core to 2.0.0.
+* Updated ReLinker to 1.2.2.
+
 ## 1.2.0
 
 ### Bug fixes
@@ -47,6 +229,7 @@
 ### Internal
 
 * Updated Realm Core to 1.4.2.
+* Improved sorting speed.
 
 ## 1.1.0
 
@@ -159,7 +342,7 @@ No changes since 0.91.1.
 * Removed `HandlerController` from the public API.
 * Removed constructor of `RealmAsyncTask` from the public API (#1594).
 * `RealmBaseAdapter` has been moved to its own GitHub repository: https://github.com/realm/realm-android-adapters
-  See https://github.com/realm/realm-android-adapters/README.md for further info on how to include it.
+  See https://github.com/realm/realm-android-adapters/blob/master/README.md for further info on how to include it.
 * File format of Realm files is changed. Files will be automatically upgraded but opening a Realm file with older
   versions of Realm is not possible.
 
